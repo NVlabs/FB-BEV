@@ -1,9 +1,8 @@
-
-# Copyright (c) 2021-2022, NVIDIA Corporation & Affiliates. All rights reserved. 
+# Copyright (c) 2022-2023, NVIDIA Corporation & Affiliates. All rights reserved. 
 # 
 # This work is made available under the Nvidia Source Code License-NC. 
 # To view a copy of this license, visit 
-# https://github.com/NVlabs/MAL/blob/main/LICENSE
+# https://github.com/NVlabs/FB-BEV/blob/main/LICENSE
 
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch
 import warnings
