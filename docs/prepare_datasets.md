@@ -15,6 +15,13 @@ python tools/create_data_bevdet.py
 ```
 
 
+** ckpts **
+
+* Pretrained model weights*
+
+```
+wget https://github.com/zhiqi-li/storage/releases/download/v1.0/r50_256x705_depth_pretrain.pth
+```
 
 **Folder structure**
 ```
