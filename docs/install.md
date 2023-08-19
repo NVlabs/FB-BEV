@@ -32,7 +32,8 @@ pip install mmsegmentation==0.24.0
 ```shell
 git clone https://github.com/NVlabs/FB-BEV.git
 cd FB-BEV
-python setup.py install
+pip install -e .
+# python setup.py install
 ```
 
 

@@ -1,6 +1,6 @@
 
 ## NuScenes
-Download nuScenes V1.0 full dataset data  and CAN bus expansion data [HERE](https://www.nuscenes.org/download).
+Download nuScenes V1.0 full dataset data.
 
 For Occupancy Prediction Task, you need to download extra annotation from
 https://github.com/Tsinghua-MARS-Lab/Occ3D
