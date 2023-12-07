@@ -1,6 +1,12 @@
-# FB-BEV & FB-OCC: Forward-Backward View Transformations for Occupancy Prediction.
+# Forward-Backward View Transformation for Vision-Centric AV Perception
 
-![](figs/demo_1.png)
+<p align="center">
+<img src="figs/demo_1.png" width=90% height=90%>
+</p>
+
+### [Paper (FB-BEV)](https://arxiv.org/abs/2308.02236) | [Paper (FB-OCC)](https://arxiv.org/abs/2307.01492) | [Intro Video](https://youtu.be/KEn8oklzyvo?si=zydZjIwoTzTd-bsO)
+
+FB-BEV and FB-OCC are a family of vision-centric 3D object detection and occupancy prediction methods based on forward-backward view transformation.
 
 ## News
 - `[2023/8/01]` FB-BEV was accepted to ICCV 2023.
@@ -11,10 +17,6 @@
 - [Installation](docs/install.md)
 - [Prepare Dataset](docs/prepare_datasets.md)
 - [Training, Eval, Visualization](docs/start.md)
-
-## INTRODUCTION
-
-FB-BEV and FB-OCC are vision-centric autonomous driving perception algorithms based on forward-backward view transformation strategies.
  
 ## Model Zoo
 
@@ -34,10 +36,20 @@ Many thanks to these excellent open source projects:
 If this work is helpful for your research, please consider citing:
 
 ```
-@article{Li2023FBBEV,
-  title={FB-BEV: BEV Representation from Forward-Backward View Transformations},
-  author={Zhiqi Li and Zhiding Yu and Wenhai Wang and Anima Anandkumar and Tong Lu and Jos{\'e} Manuel {\'A}lvarez},
-  year={2023},
-  journal={IEEE/CVF International Conference on Computer Vision (ICCV)},
+@inproceedings{li2023fbbev,
+  title={{FB-BEV}: {BEV} Representation from Forward-Backward View Transformations},
+  author={Li, Zhiqi and Yu, Zhiding and Wang, Wenhai and Anandkumar, Anima and Lu, Tong and Alvarez, Jose M},
+  booktitle={IEEE/CVF International Conference on Computer Vision (ICCV)},
+  year={2023}
+}
+
+```
+
+```
+@article{li2023fbocc,
+  title={{FB-OCC}: {3D} Occupancy Prediction based on Forward-Backward View Transformation},
+  author={Li, Zhiqi and Yu, Zhiding and Austin, David and Fang, Mingsheng and Lan, Shiyi and Kautz, Jan and Alvarez, Jose M},
+  journal={arXiv:2307.01492},
+  year={2023}
 }
 ```
