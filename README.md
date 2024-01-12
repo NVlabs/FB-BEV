@@ -26,11 +26,15 @@ FB-BEV and FB-OCC are a family of vision-centric 3D object detection and occupan
 
 * More model weights will be released later.
 
-## Acknowledgement
+## LICENSE
 
-Many thanks to these excellent open source projects:
+Copyright © 2022 - 2023, NVIDIA Corporation. All rights reserved.
 
-- [BEVFormer](https://github.com/fundamentalvision/BEVFormer), [BEVDet](https://github.com/HuangJunJie2017/BEVDet), [Occ3D](https://github.com/Tsinghua-MARS-Lab/Occ3D), [OpenOccupancy](https://github.com/JeffWang987/OpenOccupancy), [SoloFusion](https://github.com/Divadi/SOLOFusion)
+This work is made available under the Nvidia Source Code License-NC. Click here to view a copy of this license.
+
+The pre-trained models are shared under CC-BY-NC-SA-4.0. If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
+
+For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/)
 
 ## BibTeX
 If this work is helpful for your research, please consider citing:
@@ -42,7 +46,6 @@ If this work is helpful for your research, please consider citing:
   booktitle={IEEE/CVF International Conference on Computer Vision (ICCV)},
   year={2023}
 }
-
 ```
 
 ```
@@ -53,3 +56,9 @@ If this work is helpful for your research, please consider citing:
   year={2023}
 }
 ```
+
+## Acknowledgement
+
+Many thanks to these excellent open source projects:
+
+- [BEVFormer](https://github.com/fundamentalvision/BEVFormer), [BEVDet](https://github.com/HuangJunJie2017/BEVDet), [Occ3D](https://github.com/Tsinghua-MARS-Lab/Occ3D), [OpenOccupancy](https://github.com/JeffWang987/OpenOccupancy), [SoloFusion](https://github.com/Divadi/SOLOFusion)
