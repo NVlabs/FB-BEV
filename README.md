@@ -30,11 +30,11 @@ FB-BEV and FB-OCC are a family of vision-centric 3D object detection and occupan
 
 Copyright © 2022 - 2023, NVIDIA Corporation. All rights reserved.
 
-This work is made available under the Nvidia Source Code License-NC. Click here to view a copy of this license.
+This work is made available under the Nvidia Source Code License-NC. Click [here](https://github.com/NVlabs/FB-BEV/blob/main/LICENSE) to view a copy of this license.
 
 The pre-trained models are shared under CC-BY-NC-SA-4.0. If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
 
-For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/)
+For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/).
 
 ## BibTeX
 If this work is helpful for your research, please consider citing:
