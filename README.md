@@ -26,7 +26,7 @@ FB-BEV and FB-OCC are a family of vision-centric 3D object detection and occupan
 
 * More model weights will be released later.
 
-## LICENSE
+## License
 
 Copyright © 2022 - 2023, NVIDIA Corporation. All rights reserved.
 
@@ -36,7 +36,7 @@ The pre-trained models are shared under CC-BY-NC-SA-4.0. If you remix, transform
 
 For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/).
 
-## BibTeX
+## Citation
 If this work is helpful for your research, please consider citing:
 
 ```
