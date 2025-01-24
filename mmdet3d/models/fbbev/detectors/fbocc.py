@@ -164,7 +164,46 @@ class FBOCC(CenterPoint):
              x = [x]
 
         return x
-        
+    
+
+    @force_fp32()
+    def generate_grid(self, history_forward_augs, forward_augs, curr_to_prev_ego_rt, grid_size, dtype=torch.float, device='cuda'):
+        # Generate grid
+        n, _, z, h, w = grid_size
+        xs = torch.linspace(0, w - 1, w, dtype=dtype, device=device).view(1, w, 1).expand(h, w, z)
+        ys = torch.linspace(0, h - 1, h, dtype=dtype, device=device).view(h, 1, 1).expand(h, w, z)
+        zs = torch.linspace(0, z - 1, z, dtype=dtype, device=device).view(1, 1, z).expand(h, w, z)
+        grid = torch.stack(
+            (xs, ys, zs, torch.ones_like(xs)), -1).view(1, h, w, z, 4).expand(n, h, w, z, 4).view(n, h, w, z, 4, 1)
+
+        # This converts BEV indices to meters
+        # IMPORTANT: the feat2bev[0, 3] is changed from feat2bev[0, 2] because previous was 2D rotation
+        # which has 2-th index as the hom index. Now, with 3D hom, 3-th is hom
+        feat2bev = torch.zeros((4,4),dtype=grid.dtype).to(grid)
+        feat2bev[0, 0] = self.forward_projection.dx[0]
+        feat2bev[1, 1] = self.forward_projection.dx[1]
+        feat2bev[2, 2] = self.forward_projection.dx[2]
+        feat2bev[0, 3] = self.forward_projection.bx[0] - self.forward_projection.dx[0] / 2.
+        feat2bev[1, 3] = self.forward_projection.bx[1] - self.forward_projection.dx[1] / 2.
+        feat2bev[2, 3] = self.forward_projection.bx[2] - self.forward_projection.dx[2] / 2.
+        # feat2bev[2, 2] = 1
+        feat2bev[3, 3] = 1
+        feat2bev = feat2bev.view(1,4,4)
+
+        ## Get flow for grid sampling.
+        # The flow is as follows. Starting from grid locations in curr bev, transform to BEV XY11,
+        # backward of current augmentations, curr lidar to prev lidar, forward of previous augmentations,
+        # transform to previous grid locations.
+        rt_flow = (torch.inverse(feat2bev) @ history_forward_augs @ curr_to_prev_ego_rt
+                   @ torch.inverse(forward_augs) @ feat2bev)
+
+        grid = rt_flow.view(n, 1, 1, 1, 4, 4) @ grid
+
+        # normalize and sample
+        normalize_factor = torch.tensor([w - 1.0, h - 1.0, z - 1.0], dtype=dtype, device=device)
+        grid = grid[:,:,:,:, :3,0] / normalize_factor.view(1, 1, 1, 1, 3) * 2.0 - 1.0
+        return grid
+
     @force_fp32()
     def fuse_history(self, curr_bev, img_metas, bda): # align features with 3d shift
 
@@ -226,41 +265,9 @@ class FBOCC(CenterPoint):
         if voxel_feat:
             n, c_, z, h, w = curr_bev.shape
 
-        # Generate grid
-        xs = torch.linspace(0, w - 1, w, dtype=curr_bev.dtype, device=curr_bev.device).view(1, w, 1).expand(h, w, z)
-        ys = torch.linspace(0, h - 1, h, dtype=curr_bev.dtype, device=curr_bev.device).view(h, 1, 1).expand(h, w, z)
-        zs = torch.linspace(0, z - 1, z, dtype=curr_bev.dtype, device=curr_bev.device).view(1, 1, z).expand(h, w, z)
-        grid = torch.stack(
-            (xs, ys, zs, torch.ones_like(xs)), -1).view(1, h, w, z, 4).expand(n, h, w, z, 4).view(n, h, w, z, 4, 1)
-
-        # This converts BEV indices to meters
-        # IMPORTANT: the feat2bev[0, 3] is changed from feat2bev[0, 2] because previous was 2D rotation
-        # which has 2-th index as the hom index. Now, with 3D hom, 3-th is hom
-        feat2bev = torch.zeros((4,4),dtype=grid.dtype).to(grid)
-        feat2bev[0, 0] = self.forward_projection.dx[0]
-        feat2bev[1, 1] = self.forward_projection.dx[1]
-        feat2bev[2, 2] = self.forward_projection.dx[2]
-        feat2bev[0, 3] = self.forward_projection.bx[0] - self.forward_projection.dx[0] / 2.
-        feat2bev[1, 3] = self.forward_projection.bx[1] - self.forward_projection.dx[1] / 2.
-        feat2bev[2, 3] = self.forward_projection.bx[2] - self.forward_projection.dx[2] / 2.
-        # feat2bev[2, 2] = 1
-        feat2bev[3, 3] = 1
-        feat2bev = feat2bev.view(1,4,4)
-
-        ## Get flow for grid sampling.
-        # The flow is as follows. Starting from grid locations in curr bev, transform to BEV XY11,
-        # backward of current augmentations, curr lidar to prev lidar, forward of previous augmentations,
-        # transform to previous grid locations.
-        rt_flow = (torch.inverse(feat2bev) @ self.history_forward_augs @ curr_to_prev_ego_rt
-                   @ torch.inverse(forward_augs) @ feat2bev)
-
-        grid = rt_flow.view(n, 1, 1, 1, 4, 4) @ grid
-
-        # normalize and sample
-        normalize_factor = torch.tensor([w - 1.0, h - 1.0, z - 1.0], dtype=curr_bev.dtype, device=curr_bev.device)
-        grid = grid[:,:,:,:, :3,0] / normalize_factor.view(1, 1, 1, 1, 3) * 2.0 - 1.0
+        grid = self.generate_grid(self.history_forward_augs, forward_augs, curr_to_prev_ego_rt, \
+                                  curr_bev.shape, dtype=curr_bev.dtype, device=curr_bev.device)
         
-
         tmp_bev = self.history_bev
         if voxel_feat: 
             n, mc, z, h, w = tmp_bev.shape
