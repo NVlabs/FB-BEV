@@ -12,7 +12,7 @@ from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
                          wrap_fp16_model)
 
 import mmdet
-from mmdet3d.apis import single_gpu_test
+from mmdet3d.apis import single_gpu_test, single_gpu_test_trt
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
@@ -33,7 +33,7 @@ try:
     from mmdet.utils import compat_cfg
 except ImportError:
     from mmdet3d.utils import compat_cfg
-
+from deployment.eval_orin.validate_trt_outputs import eval_trt_target
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -123,6 +123,16 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument(
+        '--target_eval',
+        action='store_true',
+        default=False,
+        help='Flag to perform evaluation of the TensorRT engine on a specified target platform')
+    parser.add_argument(
+        '--data_dir',
+        type=str,
+        default=None,
+        help='Path to the directory where TensorRT outputs/data are saved (required if --target_eval is set)')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -221,9 +231,6 @@ def main():
     # build the dataloader
 
     dataset = build_dataset(cfg.data.test)
-    
-    
-    
     data_loader = build_dataloader(dataset, **test_loader_cfg)
 
     # build the model and load checkpoint
@@ -259,9 +266,16 @@ def main():
         model.PALETTE = dataset.PALETTE
 
     if not distributed:
-        model = MMDataParallel(model, device_ids=cfg.gpu_ids)
-        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)
+        if args.target_eval: 
+            if args.target_eval and args.data_dir == None:
+                raise ValueError("--data_dir must be specified when --target_eval is enabled")
+            outputs = eval_trt_target(model, data_loader, args.data_dir)
+        else:  
+            model = MMDataParallel(model, device_ids=cfg.gpu_ids)
+            outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)
     else:
+        if args.trt_engine is not None:
+            raise NotImplementedError("TensorRT inference with Distributed GPU setting is not supported.")
         model = MMDistributedDataParallel(
             model.cuda(),
             device_ids=[torch.cuda.current_device()],

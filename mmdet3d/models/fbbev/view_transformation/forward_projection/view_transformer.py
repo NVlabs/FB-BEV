@@ -8,6 +8,7 @@ from torch.cuda.amp.autocast_mode import autocast
 from torch.utils.checkpoint import checkpoint
 
 from mmdet3d.ops.bev_pool_v2.bev_pool import bev_pool_v2
+from mmdet3d.models.fbbev.custom_ops.bev_pool_v2 import bev_pool_v2 as bev_pool_v2_trt
 from mmdet.models.backbones.resnet import BasicBlock
 from mmdet3d.models.builder import NECKS
 import torch.utils.checkpoint as cp
@@ -662,13 +663,30 @@ class LSSViewTransformerFunction3D(BaseModule):
         return None
 
 
-
-
-
-
-
-
-
-
-
-
+@NECKS.register_module()
+class LSSViewTransformerFunction3DTRT(LSSViewTransformerFunction3D):
+    def voxel_pooling_v2(self, coor, depth, feat):
+        ranks_bev, ranks_depth, ranks_feat, \
+            interval_starts, interval_lengths = \
+            self.voxel_pooling_prepare_v2(coor)
+        if ranks_feat is None:
+            print('warning ---> no points within the predefined '
+                  'bev receptive field')
+            dummy = torch.zeros(size=[
+                feat.shape[0], feat.shape[2],
+                int(self.grid_size[0]),
+                int(self.grid_size[1]),
+                int(self.grid_size[2]),
+            ]).to(feat)
+            
+            return dummy
+        feat = feat.permute(0, 1, 3, 4, 2)
+        bev_feat_shape = (depth.shape[0], int(self.grid_size[2]),
+                          int(self.grid_size[1]), int(self.grid_size[0]),
+                          feat.shape[-1])  
+        bev_feat = bev_pool_v2_trt(depth, feat, ranks_depth, ranks_feat, ranks_bev,
+                                   bev_feat_shape, interval_starts,
+                                   interval_lengths)
+        bev_feat = bev_feat.permute(0, 1, 3, 4, 2) 
+        
+        return bev_feat

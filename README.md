@@ -17,6 +17,7 @@ FB-BEV and FB-OCC are a family of vision-centric 3D object detection and occupan
 - [Installation](docs/install.md)
 - [Prepare Dataset](docs/prepare_datasets.md)
 - [Training, Eval, Visualization](docs/start.md)
+- [Deployment on NVIDIA DRIVE Platform with TensorRT](deployment)
  
 ## Model Zoo
 

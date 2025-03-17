@@ -132,3 +132,77 @@ class BackwardProjection(BaseModule):
 
         return bev
 
+
+@HEADS.register_module()
+class BackwardProjectionTRT(BaseModule):
+    def __init__(self,
+                 *args,
+                 transformer=None,
+                 positional_encoding=None,
+                 pc_range=None,
+                 in_channels=64,
+                 out_channels=64,
+                 use_zero_embedding=False,
+                 bev_h=30,
+                 bev_w=30,
+                 
+                 **kwargs):
+        super().__init__()
+        self.bev_h = bev_h
+        self.bev_w = bev_w
+        self.fp16_enabled = False
+        self.pc_range = pc_range
+        self.use_zero_embedding = use_zero_embedding
+        self.real_w = self.pc_range[3] - self.pc_range[0]
+        self.real_h = self.pc_range[4] - self.pc_range[1]
+       
+        self.positional_encoding = build_positional_encoding(
+            positional_encoding)
+        self.transformer = build_transformer(transformer)
+        self.embed_dims = self.transformer.embed_dims
+        self._init_layers()
+
+
+    def _init_layers(self):
+        self.bev_embedding = nn.Embedding(
+                self.bev_h * self.bev_w, self.embed_dims)
+
+    def init_weights(self):
+        """Initialize weights of the DeformDETR head."""
+        self.transformer.init_weights()
+
+    @auto_fp16(apply_to=('mlvl_feats'))
+    def forward(self, mlvl_feats, lss_bev=None, gt_bboxes_3d=None, cam_params=None, pred_img_depth=None, bev_mask=None):
+        bs, num_cam, _, _, _ = mlvl_feats[0].shape
+        dtype = mlvl_feats[0].dtype
+        bev_queries = self.bev_embedding.weight.to(dtype)
+        bev_queries = bev_queries.unsqueeze(1).repeat(1, bs, 1)
+        
+        if lss_bev is not None:
+            lss_bev = lss_bev.flatten(2).permute(2, 0, 1)
+            bev_queries = bev_queries + lss_bev
+        
+        if bev_mask is not None:
+            bev_mask = bev_mask.reshape(bs, -1)
+
+        bev_pos = self.positional_encoding(bs, self.bev_h, self.bev_w, bev_queries.device).to(dtype)
+
+        bev =  self.transformer(
+                mlvl_feats,
+                bev_queries,
+                self.bev_h,
+                self.bev_w,
+                grid_length=(self.real_h / self.bev_h,
+                             self.real_w / self.bev_w),
+                bev_pos=bev_pos,
+                cam_params=cam_params,
+                gt_bboxes_3d=gt_bboxes_3d,
+                pred_img_depth=pred_img_depth,
+                prev_bev=None,
+                bev_mask=bev_mask,
+            )
+
+        bev = bev.permute(0, 2, 1).view(bs, -1, self.bev_h, self.bev_w).contiguous()
+
+
+        return bev

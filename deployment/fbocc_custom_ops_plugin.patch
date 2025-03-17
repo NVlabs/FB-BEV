@@ -1,0 +1,565 @@
+diff --git a/TensorRT/Makefile b/TensorRT/Makefile
+new file mode 100644
+index 0000000..3837ac4
+--- /dev/null
++++ b/TensorRT/Makefile
+@@ -0,0 +1,60 @@
++# Define paths
++CUDA_DIR ?= /usr/local/cuda
++DLSW_TRIPLE = aarch64-linux-gnu
++TRT_PATH ?= /usr/src/tensorrt/
++TRT_LIB_DIR := $(TRT_PATH)/lib
++TRT_INC_DIR := $(TRT_PATH)/include
++SYSROOT ?= 
++OUTPUT_DIR ?= build
++
++# Compiler and flags
++CXX := aarch64-linux-gnu-g++
++NVCC := $(CUDA_DIR)/bin/nvcc
++
++CXXFLAGS := -std=c++14 -O3 -Wno-deprecated-declarations -fPIC \
++    -I$(TRT_INC_DIR)/ \
++    -I$(CUDA_DIR)/include \
++    -I$(SYSROOT)/include \
++    -Icommon \
++
++NVCCFLAGS := -std=c++14 --compiler-options '-fPIC' \
++    -I$(TRT_INC_DIR)/ \
++    -I$(CUDA_DIR)/include \
++    -I$(SYSROOT)/include \
++    -Icommon \
++    -gencode arch=compute_87,code=sm_87
++
++NVCCFLAGS += --compiler-bindir=/usr/bin/aarch64-linux-gnu-g++
++
++# Library paths and libraries
++LDFLAGS := -L$(TRT_LIB_DIR)  -L$(CUDA_DIR)/targets/aarch64-linux/lib
++LDLIBS := -lnvinfer -lnvinfer_plugin -lcudart 
++
++# Source and object files
++CPP_SRCS := $(wildcard common/*.cpp plugin/bev_pool_v2/*.cpp plugin/grid_sampler/*.cpp)
++CU_SRCS := $(wildcard common/*.cu plugin/bev_pool_v2/*.cu plugin/grid_sampler/*.cu)
++CPP_OBJS := $(addprefix $(OUTPUT_DIR)/, $(CPP_SRCS:.cpp=.o))
++CU_OBJS := $(addprefix $(OUTPUT_DIR)/, $(CU_SRCS:.cu=.o))
++
++# Output shared library
++OUTPUT_LIB := ./fb-occ_trt_plugin_aarch64.so
++
++# Rules
++all: $(OUTPUT_DIR) $(OUTPUT_LIB)
++
++$(OUTPUT_DIR):
++	mkdir -p $(OUTPUT_DIR)
++
++$(OUTPUT_DIR)/%.o: %.cpp
++	mkdir -p $(dir $@)
++	$(CXX) $(CXXFLAGS) -c $< -o $@
++
++$(OUTPUT_DIR)/%.o: %.cu
++	mkdir -p $(dir $@)
++	$(NVCC) $(NVCCFLAGS) -c $< -o $@
++
++$(OUTPUT_LIB): $(CPP_OBJS) $(CU_OBJS)
++	$(CXX) -shared -o $@ $^ $(LDFLAGS) $(LDLIBS)
++
++clean:
++	rm -rf $(OUTPUT_DIR)
+diff --git a/TensorRT/plugin/bev_pool_v2/bevPoolKernel.cu b/TensorRT/plugin/bev_pool_v2/bevPoolKernel.cu
+index 6697df9..d599835 100644
+--- a/TensorRT/plugin/bev_pool_v2/bevPoolKernel.cu
++++ b/TensorRT/plugin/bev_pool_v2/bevPoolKernel.cu
+@@ -19,10 +19,10 @@
+ template <typename T>
+ __global__ void bev_pool_v2_kernel(
+     int c, int n_intervals, const T *__restrict__ depth,
+-    const T *__restrict__ feat, const int *__restrict__ ranks_depth,
+-    const int *__restrict__ ranks_feat, const int *__restrict__ ranks_bev,
+-    const int *__restrict__ interval_starts,
+-    const int *__restrict__ interval_lengths, T *__restrict__ out) {
++    const T *__restrict__ feat, const TRT_INT *__restrict__ ranks_depth,
++    const TRT_INT *__restrict__ ranks_feat, const TRT_INT *__restrict__ ranks_bev,
++    const TRT_INT *__restrict__ interval_starts,
++    const TRT_INT *__restrict__ interval_lengths, T *__restrict__ out) {
+   int idx = blockIdx.x * blockDim.x + threadIdx.x;
+   int index = idx / c;
+   int cur_c = idx % c;
+@@ -39,7 +39,7 @@ __global__ void bev_pool_v2_kernel(
+     psum += *cur_feat * *cur_depth;
+   }
+ 
+-  const int *cur_rank = ranks_bev + interval_start;
++  const TRT_INT *cur_rank = ranks_bev + interval_start;
+   T *cur_out = out + *cur_rank * c + cur_c;
+   *cur_out = psum;
+ }
+@@ -47,10 +47,10 @@ __global__ void bev_pool_v2_kernel(
+ template <>
+ __global__ void bev_pool_v2_kernel(
+     int c, int n_intervals, const __half *__restrict__ depth,
+-    const __half *__restrict__ feat, const int *__restrict__ ranks_depth,
+-    const int *__restrict__ ranks_feat, const int *__restrict__ ranks_bev,
+-    const int *__restrict__ interval_starts,
+-    const int *__restrict__ interval_lengths, __half *__restrict__ out) {
++    const __half *__restrict__ feat, const TRT_INT *__restrict__ ranks_depth,
++    const TRT_INT *__restrict__ ranks_feat, const TRT_INT *__restrict__ ranks_bev,
++    const TRT_INT *__restrict__ interval_starts,
++    const TRT_INT *__restrict__ interval_lengths, __half *__restrict__ out) {
+   int idx = blockIdx.x * blockDim.x + threadIdx.x;
+   int index = idx / c;
+   int cur_c = idx % c;
+@@ -67,7 +67,7 @@ __global__ void bev_pool_v2_kernel(
+     psum = __hfma(*cur_feat, *cur_depth, psum);
+   }
+ 
+-  const int *cur_rank = ranks_bev + interval_start;
++  const TRT_INT *cur_rank = ranks_bev + interval_start;
+   __half *cur_out = out + *cur_rank * c + cur_c;
+   *cur_out = psum;
+ }
+@@ -150,9 +150,9 @@ __global__ void bev_pool_v2_kernel_int8(
+ 
+ template <typename T>
+ void bev_pool_v2(int c, int n_intervals, int num_points, const T *depth,
+-                 const T *feat, const int *ranks_depth, const int *ranks_feat,
+-                 const int *ranks_bev, const int *interval_starts,
+-                 const int *interval_lengths, T *out, cudaStream_t stream) {
++                 const T *feat, const TRT_INT *ranks_depth, const TRT_INT *ranks_feat,
++                 const TRT_INT *ranks_bev, const TRT_INT *interval_starts,
++                 const TRT_INT *interval_lengths, T *out, cudaStream_t stream) {
+   cudaMemset((T *)out, 0, num_points * sizeof(T));
+   bev_pool_v2_kernel<<<GET_BLOCKS(n_intervals * c), THREADS_PER_BLOCK, 0,
+                        stream>>>(c, n_intervals, depth, feat, ranks_depth,
+@@ -191,14 +191,14 @@ void bev_pool_v2_int8(int c, int n_intervals, int num_points,
+ 
+ template void bev_pool_v2(int c, int n_intervals, int num_points,
+                           const float *depth, const float *feat,
+-                          const int *ranks_depth, const int *ranks_feat,
+-                          const int *ranks_bev, const int *interval_starts,
+-                          const int *interval_lengths, float *out,
++                          const TRT_INT *ranks_depth, const TRT_INT *ranks_feat,
++                          const TRT_INT *ranks_bev, const TRT_INT *interval_starts,
++                          const TRT_INT *interval_lengths, float *out,
+                           cudaStream_t stream);
+ 
+ template void bev_pool_v2(int c, int n_intervals, int num_points,
+                           const __half *depth, const __half *feat,
+-                          const int *ranks_depth, const int *ranks_feat,
+-                          const int *ranks_bev, const int *interval_starts,
+-                          const int *interval_lengths, __half *out,
++                          const TRT_INT *ranks_depth, const TRT_INT *ranks_feat,
++                          const TRT_INT *ranks_bev, const TRT_INT *interval_starts,
++                          const TRT_INT *interval_lengths, __half *out,
+                           cudaStream_t stream);
+diff --git a/TensorRT/plugin/bev_pool_v2/bevPoolKernel.h b/TensorRT/plugin/bev_pool_v2/bevPoolKernel.h
+index e23eb81..e12cea4 100644
+--- a/TensorRT/plugin/bev_pool_v2/bevPoolKernel.h
++++ b/TensorRT/plugin/bev_pool_v2/bevPoolKernel.h
+@@ -8,13 +8,16 @@
+ #include "cuda_int8.h"
+ #include <cuda_fp16.h>
+ #include <cuda_runtime.h>
++#include <type_traits>
++#include <NvInfer.h>
++typedef std::conditional<NV_TENSORRT_MAJOR<10, int, int64_t>::type TRT_INT;
+ 
+ // CUDA function declarations
+ template <typename T>
+ void bev_pool_v2(int c, int n_intervals, int num_points, const T *depth,
+-                 const T *feat, const int *ranks_depth, const int *ranks_feat,
+-                 const int *ranks_bev, const int *interval_starts,
+-                 const int *interval_lengths, T *out, cudaStream_t stream);
++                 const T *feat, const TRT_INT *ranks_depth, const TRT_INT *ranks_feat,
++                 const TRT_INT *ranks_bev, const TRT_INT *interval_starts,
++                 const TRT_INT *interval_lengths, T *out, cudaStream_t stream);
+ 
+ void bev_pool_v2_h2(int c, int n_intervals, int num_points, const __half *depth,
+                     const __half2 *feat, const int *ranks_depth,
+diff --git a/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.cpp b/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.cpp
+index 3aae089..85e8319 100644
+--- a/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.cpp
++++ b/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.cpp
+@@ -45,11 +45,12 @@ DimsExprs BEVPoolPlugin::getOutputDimensions(
+     int32_t outputIndex, const nvinfer1::DimsExprs *inputs, int32_t nbInputs,
+     nvinfer1::IExprBuilder &exprBuilder) noexcept {
+   nvinfer1::DimsExprs ret;
+-  ret.nbDims = 4;
++  ret.nbDims = 5;
+   ret.d[0] = exprBuilder.constant(1);
+-  ret.d[1] = exprBuilder.constant(mOutHeight);
+-  ret.d[2] = exprBuilder.constant(mOutWidth);
+-  ret.d[3] = inputs[1].d[3];
++  ret.d[1] = exprBuilder.constant(8);
++  ret.d[2] = exprBuilder.constant(mOutHeight); 
++  ret.d[3] = exprBuilder.constant(mOutWidth);
++  ret.d[4] = inputs[1].d[4];
+   return ret;
+ }
+ 
+@@ -74,31 +75,31 @@ int32_t BEVPoolPlugin::enqueue(const nvinfer1::PluginTensorDesc *inputDesc,
+   nvinfer1::Dims out_dims = outputDesc[0].dims;     // bhwc
+   auto data_type = inputDesc[0].type;
+   int num_points =
+-      out_dims.d[0] * out_dims.d[1] * out_dims.d[2] * out_dims.d[3];
++      out_dims.d[0] * out_dims.d[1] * out_dims.d[2] * out_dims.d[3] * out_dims.d[4];
+   switch (data_type) {
+   case nvinfer1::DataType::kFLOAT:
+-    bev_pool_v2(feat_dims.d[3], interval_dims.d[0], num_points,
+-                (float *)inputs[0], (float *)inputs[1], (int *)inputs[2],
+-                (int *)inputs[3], (int *)inputs[4], (int *)inputs[5],
+-                (int *)inputs[6], (float *)outputs[0], stream);
++    bev_pool_v2(feat_dims.d[4], interval_dims.d[0], num_points,
++                (float *)inputs[0], (float *)inputs[1], (TRT_INT *)inputs[2],
++                (TRT_INT *)inputs[3], (TRT_INT *)inputs[4], (TRT_INT *)inputs[5],
++                (TRT_INT *)inputs[6], (float *)outputs[0], stream);
+     break;
+   case nvinfer1::DataType::kHALF:
+     if (use_h2) {
+-      bev_pool_v2_h2(feat_dims.d[3], interval_dims.d[0], num_points,
++      bev_pool_v2_h2(feat_dims.d[4], interval_dims.d[0], num_points,
+                      (__half *)inputs[0], (__half2 *)inputs[1],
+                      (int *)inputs[2], (int *)inputs[3], (int *)inputs[4],
+                      (int *)inputs[5], (int *)inputs[6], (__half2 *)outputs[0],
+                      stream);
+     } else {
+-      bev_pool_v2(feat_dims.d[3], interval_dims.d[0], num_points,
+-                  (__half *)inputs[0], (__half *)inputs[1], (int *)inputs[2],
+-                  (int *)inputs[3], (int *)inputs[4], (int *)inputs[5],
+-                  (int *)inputs[6], (__half *)outputs[0], stream);
++      bev_pool_v2(feat_dims.d[4], interval_dims.d[0], num_points,
++                  (__half *)inputs[0], (__half *)inputs[1], (TRT_INT *)inputs[2],
++                  (TRT_INT *)inputs[3], (TRT_INT *)inputs[4], (TRT_INT *)inputs[5],
++                  (TRT_INT *)inputs[6], (__half *)outputs[0], stream);
+     }
+     break;
+   case nvinfer1::DataType::kINT8:
+     bev_pool_v2_int8(
+-        feat_dims.d[3], interval_dims.d[0], num_points, (int8_t *)inputs[0],
++        feat_dims.d[4], interval_dims.d[0], num_points, (int8_t *)inputs[0],
+         inputDesc[0].scale, (int8_4 *)inputs[1], inputDesc[1].scale,
+         (int *)inputs[2], (int *)inputs[3], (int *)inputs[4], (int *)inputs[5],
+         (int *)inputs[6], (int8_4 *)outputs[0], outputDesc[0].scale, stream);
+@@ -130,7 +131,7 @@ bool BEVPoolPlugin::supportsFormatCombination(
+     return inOut[pos].type == inOut[0].type &&
+            inOut[pos].format == inOut[0].format;
+   } else {
+-    return (inOut[pos].type == nvinfer1::DataType::kINT32 &&
++    return (inOut[pos].type == TRT_kINT && 
+             inOut[pos].format == nvinfer1::TensorFormat::kLINEAR);
+   }
+ }
+diff --git a/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.h b/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.h
+index 75663cd..3aea990 100644
+--- a/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.h
++++ b/TensorRT/plugin/bev_pool_v2/bevPoolPlugin.h
+@@ -11,6 +11,14 @@
+ #include <cublas_v2.h>
+ #include <string>
+ #include <vector>
++#include <type_traits>
++
++#if NV_TENSORRT_MAJOR < 10
++  #define TRT_kINT nvinfer1::DataType::kINT32
++#else
++  #define TRT_kINT nvinfer1::DataType::kINT64
++#endif
++typedef std::conditional<NV_TENSORRT_MAJOR<10, int32_t, int64_t>::type TRT_INT;
+ 
+ namespace trt_plugin {
+ 
+diff --git a/TensorRT/plugin/grid_sampler/gridSamplerKernel.cu b/TensorRT/plugin/grid_sampler/gridSamplerKernel.cu
+index 4cd713f..bf0ac63 100644
+--- a/TensorRT/plugin/grid_sampler/gridSamplerKernel.cu
++++ b/TensorRT/plugin/grid_sampler/gridSamplerKernel.cu
+@@ -1922,8 +1922,9 @@ __global__ void grid_sampler_3d_kernel(
+   }
+ }
+ 
+-void create_desc(const int *dims, int nb_dims, TensorDesc &desc) {
+-  memcpy(&desc.shape[0], dims, sizeof(int) * nb_dims);
++void create_desc(const TRT_INT *dims, int nb_dims, TensorDesc &desc) {
++  // memcpy(&desc.shape[0], dims, sizeof(int) * nb_dims);
++  for (size_t dim_id=0; dim_id<nb_dims; ++dim_id) desc.shape[dim_id] = (int) dims[dim_id];
+   desc.stride[nb_dims - 1] = 1;
+   for (int i = nb_dims - 2; i >= 0; --i) {
+     desc.stride[i] = desc.stride[i + 1] * desc.shape[i + 1];
+@@ -1931,8 +1932,8 @@ void create_desc(const int *dims, int nb_dims, TensorDesc &desc) {
+ }
+ 
+ template <typename T>
+-void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
+-                 int *input_dims, int *grid_dims, int nb_dims,
++void grid_sample(T *output, const T *input, const T *grid, TRT_INT *output_dims,
++                 TRT_INT *input_dims, TRT_INT *grid_dims, int nb_dims,
+                  GridSamplerInterpolation interp, GridSamplerPadding padding,
+                  bool align_corners, cudaStream_t stream) {
+   TensorDesc input_desc;
+@@ -1969,7 +1970,7 @@ void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
+ 
+ template <>
+ void grid_sample(__half2 *output, const __half2 *input, const __half2 *grid,
+-                 int *output_dims, int *input_dims, int *grid_dims, int nb_dims,
++                 TRT_INT *output_dims, TRT_INT *input_dims, TRT_INT *grid_dims, int nb_dims,
+                  GridSamplerInterpolation interp, GridSamplerPadding padding,
+                  bool align_corners, cudaStream_t stream) {
+   TensorDesc input_desc;
+@@ -2009,8 +2010,8 @@ void grid_sample(__half2 *output, const __half2 *input, const __half2 *grid,
+ 
+ void grid_sample_int8(int8_4 *output, const float &scale_o, const int8_4 *input,
+                       const float &scale_i, const int8_4 *grid,
+-                      const float &scale_g, int *output_dims, int *input_dims,
+-                      int *grid_dims, int nb_dims,
++                      const float &scale_g, TRT_INT *output_dims, TRT_INT *input_dims,
++                      TRT_INT *grid_dims, int nb_dims,
+                       GridSamplerInterpolation interp,
+                       GridSamplerPadding padding, bool align_corners,
+                       cudaStream_t stream) {
+@@ -2043,22 +2044,22 @@ void grid_sample_int8(int8_4 *output, const float &scale_o, const int8_4 *input,
+ }
+ 
+ template void grid_sample<float>(float *output, const float *input,
+-                                 const float *grid, int *output_dims,
+-                                 int *input_dims, int *grid_dims, int nb_dims,
++                                 const float *grid, TRT_INT *output_dims,
++                                 TRT_INT *input_dims, TRT_INT *grid_dims, int nb_dims,
+                                  GridSamplerInterpolation interp,
+                                  GridSamplerPadding padding, bool align_corners,
+                                  cudaStream_t stream);
+ 
+ template void grid_sample<__half>(__half *output, const __half *input,
+-                                  const __half *grid, int *output_dims,
+-                                  int *input_dims, int *grid_dims, int nb_dims,
++                                  const __half *grid, TRT_INT *output_dims,
++                                  TRT_INT *input_dims, TRT_INT *grid_dims, int nb_dims,
+                                   GridSamplerInterpolation interp,
+                                   GridSamplerPadding padding,
+                                   bool align_corners, cudaStream_t stream);
+ 
+ template void grid_sample<__half2>(__half2 *output, const __half2 *input,
+-                                   const __half2 *grid, int *output_dims,
+-                                   int *input_dims, int *grid_dims, int nb_dims,
++                                   const __half2 *grid, TRT_INT *output_dims,
++                                   TRT_INT *input_dims, TRT_INT *grid_dims, int nb_dims,
+                                    GridSamplerInterpolation interp,
+                                    GridSamplerPadding padding,
+                                    bool align_corners, cudaStream_t stream);
+diff --git a/TensorRT/plugin/grid_sampler/gridSamplerKernel.h b/TensorRT/plugin/grid_sampler/gridSamplerKernel.h
+index 0a913c1..64f9879 100644
+--- a/TensorRT/plugin/grid_sampler/gridSamplerKernel.h
++++ b/TensorRT/plugin/grid_sampler/gridSamplerKernel.h
+@@ -7,20 +7,24 @@
+ 
+ #include "cuda_int8.h"
+ #include <cuda_runtime.h>
++#include <type_traits>
++#include <NvInfer.h>
++
++typedef std::conditional<NV_TENSORRT_MAJOR<10, int, int64_t>::type TRT_INT;
+ 
+ enum class GridSamplerInterpolation { Bilinear, Nearest, Bicubic };
+ enum class GridSamplerPadding { Zeros, Border, Reflection };
+ 
+ template <typename T>
+-void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
+-                 int *input_dims, int *grid_dims, int nb_dims,
++void grid_sample(T *output, const T *input, const T *grid, TRT_INT *output_dims,
++                 TRT_INT *input_dims, TRT_INT *grid_dims, int nb_dims,
+                  GridSamplerInterpolation interp, GridSamplerPadding padding,
+                  bool align_corners, cudaStream_t stream);
+ 
+ void grid_sample_int8(int8_4 *output, const float &scale_o, const int8_4 *input,
+                       const float &scale_i, const int8_4 *grid,
+-                      const float &scale_g, int *output_dims, int *input_dims,
+-                      int *grid_dims, int nb_dims,
++                      const float &scale_g, TRT_INT *output_dims, TRT_INT *input_dims,
++                      TRT_INT *grid_dims, int nb_dims,
+                       GridSamplerInterpolation interp,
+                       GridSamplerPadding padding, bool align_corners,
+                       cudaStream_t stream);
+diff --git a/mmdet3d/models/fbbev/custom_ops/bev_pool_v2.py b/mmdet3d/models/fbbev/custom_ops/bev_pool_v2.py
+index 1a95bcc..e8e4708 100644
+--- a/mmdet3d/models/fbbev/custom_ops/bev_pool_v2.py
++++ b/mmdet3d/models/fbbev/custom_ops/bev_pool_v2.py
+@@ -1,6 +1,12 @@
+ from torch.autograd import Function
+-from third_party.bev_mmdet3d.ops.bev_pool_v2 import bev_pool_v2_gpu
++from mmdet3d.ops.bev_pool_v2.bev_pool import QuickCumsumCuda
+ 
++def bev_pool_v2_gpu(depth, feat, ranks_depth, ranks_feat, ranks_bev,
++                bev_feat_shape, interval_starts, interval_lengths):
++    x = QuickCumsumCuda.apply(depth, feat, ranks_depth, ranks_feat, ranks_bev,
++                              bev_feat_shape, interval_starts,
++                              interval_lengths)
++    return x
+ 
+ class _BEVPoolV2(Function):
+     @staticmethod
+@@ -43,11 +49,9 @@ class _BEVPoolV2(Function):
+         out_width,
+     ):
+         """run forward."""
+-        feat = feat.unsqueeze(0)
+-        depth = depth.unsqueeze(0)
+         bev_feat_shape = (
+             depth.shape[0],
+-            1,
++            8,
+             out_height,
+             out_width,
+             feat.shape[-1],
+@@ -62,8 +66,6 @@ class _BEVPoolV2(Function):
+             interval_starts,
+             interval_lengths,
+         )
+-        bev_feat = bev_feat.squeeze(2)
+-        bev_feat = bev_feat.permute(0, 2, 3, 1)
+         return bev_feat
+ 
+     @staticmethod
+@@ -111,17 +113,17 @@ def bev_pool_v2(
+     ranks_bev,
+     interval_starts,
+     interval_lengths,
+-    out_height=128,
+-    out_width=128,
++    out_height=100,
++    out_width=100,
+ ):
+     return _bev_pool_v2(
+         depth,  # N,D,H,W
+         feat,  # N,H,W,C
+-        ranks_depth.int(),
+-        ranks_feat.int(),
+-        ranks_bev.int(),
+-        interval_starts.int(),
+-        interval_lengths.int(),
++        ranks_depth.long(),
++        ranks_feat.long(),
++        ranks_bev.long(),
++        interval_starts.long(),
++        interval_lengths.long(),
+         out_height,
+         out_width,
+     )
+diff --git a/mmdet3d/models/fbbev/custom_ops/multi_scale_deformable_attn.py b/mmdet3d/models/fbbev/custom_ops/multi_scale_deformable_attn.py
+index 36db587..c9690f7 100644
+--- a/mmdet3d/models/fbbev/custom_ops/multi_scale_deformable_attn.py
++++ b/mmdet3d/models/fbbev/custom_ops/multi_scale_deformable_attn.py
+@@ -18,7 +18,7 @@ class _MultiScaleDeformableAttnFunction(Function):
+         attention_weights,
+     ):
+         return g.op(
+-            "MultiScaleDeformableAttnTRT",
++            "trt::MultiscaleDeformableAttnPlugin_TRT",
+             value,
+             value_spatial_shapes,
+             reference_points,
+@@ -31,88 +31,20 @@ class _MultiScaleDeformableAttnFunction(Function):
+         ctx,
+         value,
+         value_spatial_shapes,
+-        reference_points,
+-        sampling_offsets,
+-        attention_weights,
++        value_level_start_index, 
++        sampling_locations,
++        attention_weights
+     ):
+-        """GPU version of multi-scale deformable attention.
+-
+-        Args:
+-            value (Tensor): The value has shape
+-                (bs, mum_heads, embed_dims//num_heads, num_keys)
+-            value_spatial_shapes (Tensor): Spatial shape of
+-                each feature map, has shape (num_levels, 2),
+-                last dimension 2 represent (h, w)
+-            reference_points (Tensor): The reference points.
+-            sampling_offsets (Tensor): The offset of sampling points,
+-                has shape
+-                (bs, num_heads, num_queries, num_levels*num_points*2),
+-                the last dimension 2 represent (x, y).
+-            attention_weights (Tensor): The weight of sampling points used
+-                when calculate the attention, has shape
+-                (bs, num_heads, num_queries, num_levels*num_points).
+-
+-        Returns:
+-            Tensor: has shape (bs, embed_dims, num_queries)
+-        """
+-        num_heads, channel = value.shape[2:]
+-        num_level = value_spatial_shapes.shape[0]
+-        bs, num_queries = reference_points.shape[:2]
+-
+-        points_per_group = torch.div(
+-            reference_points.shape[-1], 2, rounding_mode="floor"
+-        )
+-        sampling_offsets = sampling_offsets.view(
+-            bs, num_queries, num_heads, num_level, -1, points_per_group, 2,
+-        )
+-        dim = sampling_offsets.shape[4] * num_level * 2 * points_per_group
+-        offset_normalizer = torch.stack(
+-            [value_spatial_shapes[..., 1], value_spatial_shapes[..., 0]], -1
+-        )
+-        sampling_locations = reference_points.view(
+-            bs, num_queries, 1, 1, 1, -1, 2
+-        ) + sampling_offsets / offset_normalizer.view(1, 1, 1, -1, 1, 1, 2)
+-        sampling_locations = sampling_locations.view(
+-            bs,
+-            num_queries,
+-            num_heads,
+-            num_level,
+-            torch.div(dim, num_level * 2, rounding_mode="floor"),
+-            2,
+-        )
+-        attention_weights = attention_weights.view(
+-            -1, num_level * torch.div(dim, num_level * 2, rounding_mode="floor")
+-        ).softmax(-1)
+-        attention_weights = attention_weights.view(
+-            bs,
+-            num_queries,
+-            num_heads,
+-            num_level,
+-            torch.div(dim, num_level * 2, rounding_mode="floor"),
+-        )
+-        im2col_step = value.shape[0]
++        N, S, M, D = value.shape
++        im2col_step = N
+         ctx.im2col_step = im2col_step
+-
+-        ctx.fp16 = False
+-        if value.dtype == torch.float16:
+-            ctx.fp16 = True
+-            value = value.float()
+-            sampling_locations = sampling_locations.float()
+-            attention_weights = attention_weights.float()
+-
+-        value_level_start_index = torch.zeros_like(value_spatial_shapes[:, 0])
+-        value_level_start_index[1:] = torch.cumsum(
+-            value_spatial_shapes[:, 0] * value_spatial_shapes[:, 1], dim=0
+-        )[:-1]
+-
+         output = ext_module.ms_deform_attn_forward(
+-            value,
+-            value_spatial_shapes,
+-            value_level_start_index,
+-            sampling_locations,
+-            attention_weights,
+-            im2col_step=ctx.im2col_step,
+-        ).view(bs, num_queries, num_heads, channel)
++            value, 
++            value_spatial_shapes, 
++            value_level_start_index, 
++            sampling_locations, 
++            attention_weights, 
++            im2col_step=ctx.im2col_step)
+         ctx.save_for_backward(
+             value,
+             value_spatial_shapes,
+@@ -120,7 +52,8 @@ class _MultiScaleDeformableAttnFunction(Function):
+             sampling_locations,
+             attention_weights,
+         )
+-        return output.half() if ctx.fp16 else output
++        N, Lq, _ = output.shape
++        return output.view(N, Lq, M, D)
+ 
+ 
+ class _MultiScaleDeformableAttnFunction2(_MultiScaleDeformableAttnFunction):
